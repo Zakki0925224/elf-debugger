@@ -51,4 +51,7 @@ Module.symvers
 Mkfile.old
 dkms.conf
 
-elf-dbgr
+edb
+/test/test
+
+.vscode

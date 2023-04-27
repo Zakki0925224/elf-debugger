@@ -1,2 +1,3 @@
 # elf-debugger
-自作ELFデバッガ
+
+自作 ELF デバッガー

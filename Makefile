@@ -1,8 +1,8 @@
 SRCS=$(wildcard *.c)
 OBJS=$(SRCS:.c=.o)
 
-elf-dbgr: $(OBJS)
-	$(CC) -o edb $(OBJS)
+edb: $(OBJS)
+	$(CC) -g -o edb $(OBJS)
 
 clean:
 	rm -f edb *.o *~ tmp*

@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <string.h>
 #include "debugger.h"
 
@@ -42,6 +41,7 @@ bool loadElf(char *fileName, ElfInfo *elfInfo)
     Elf64_Ehdr *ehdr = malloc(sizeof(Elf64_Ehdr));
     Elf64_Phdr *phdrs;
     Elf64_Shdr *shdrs;
+    uint8_t *shst;
 
     fp = fopen(fileName, "r");
 
@@ -66,8 +66,16 @@ bool loadElf(char *fileName, ElfInfo *elfInfo)
     int shnum = elfInfo->ehdr->e_shnum;
     shdrs = malloc(sizeof(Elf64_Shdr) * shnum);
     fseek(fp, ehdr->e_shoff, SEEK_SET);
-    fread(shdrs, sizeof(Elf64_Phdr) * shnum, 1, fp);
+    fread(shdrs, sizeof(Elf64_Shdr) * shnum, 1, fp);
     elfInfo->shdrs = shdrs;
+
+    // read section header string table
+    uint64_t shst_size = shdrs[ehdr->e_shstrndx].sh_size;
+    uint64_t shst_offset = shdrs[ehdr->e_shstrndx].sh_offset;
+    shst = malloc(shst_size);
+    fseek(fp, shst_offset, SEEK_SET);
+    fread(shst, shst_size, 1, fp);
+    elfInfo->shst = shst;
 
     fclose(fp);
 
@@ -79,6 +87,7 @@ void printHeaders(ElfInfo *elfInfo)
     Elf64_Ehdr *ehdr = elfInfo->ehdr;
     Elf64_Phdr *phdrs = elfInfo->phdrs;
     Elf64_Shdr *shdrs = elfInfo->shdrs;
+    uint8_t *shst = elfInfo->shst;
 
     printf("ELF header: \n");
     printf("  Magic:\t\t\t\t");
@@ -110,13 +119,23 @@ void printHeaders(ElfInfo *elfInfo)
     }
 
     printf("\nSection headers: \n");
-    printf("  Name     Type       Flags      Addr       Offset     Size      Link     Info     Align      Entry size\n");
+    printf("  Name                 Type       Flags      Addr       Offset     Size      Link     Info     Align      Entry size\n");
     for (int i = 0; i < ehdr->e_shnum; i++)
     {
-        printf("  %-8d 0x%-8x 0x%-8x 0x%-8x 0x%-8x %-8d  %-8d %-8d 0x%-8x %-8d\n",
-               shdrs[i].sh_name, shdrs[i].sh_type, shdrs[i].sh_flags,
+        printf("  %-20s 0x%-8x 0x%-8x 0x%-8x 0x%-8x %-8d  %-8d %-8d 0x%-8x %-8d\n",
+               ((char *)(shst + shdrs[i].sh_name)), shdrs[i].sh_type, shdrs[i].sh_flags,
                shdrs[i].sh_addr, shdrs[i].sh_offset, shdrs[i].sh_size,
                shdrs[i].sh_link, shdrs[i].sh_info, shdrs[i].sh_addralign, shdrs[i].sh_entsize);
+    }
+}
+
+void lntrim(char *str)
+{
+    char *p;
+    p = strchr(str, '\n');
+    if (p != NULL)
+    {
+        *p = '\0';
     }
 }
 
@@ -127,17 +146,23 @@ bool shellMain(ElfInfo *elfInfo)
     while (1)
     {
         printf("\n(edb) ");
-        scanf("%255s%*[^\n]", strBuf);
+        fgets(strBuf, sizeof(strBuf), stdin);
+        lntrim(strBuf);
 
         // quit
         if (strcmp(strBuf, "q") == 0)
+        {
             break;
+        }
 
         else if (strcmp(strBuf, "info") == 0)
             printHeaders(elfInfo);
 
+        else if (strcmp(strBuf, "") == 0)
+            continue;
+
         else
-            printf("Input -> \"%s\"\n", strBuf);
+            printf("Command \"%s\" was not found\n", strBuf);
     }
 
     return true;

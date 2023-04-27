@@ -45,17 +45,18 @@ int main(int argc, char *argv[])
     if (!loadElf(argv[1], elfInfo))
     {
         fprintf(stderr, "Failed to load ELF binary\n");
-        free(elfInfo->shdrs);
         exit(1);
     }
 
     if (!shellMain(elfInfo))
     {
-        free(elfInfo->shdrs);
         exit(1);
     }
 
+    free(elfInfo->ehdr);
+    free(elfInfo->phdrs);
     free(elfInfo->shdrs);
+    free(elfInfo->shst);
 
     return 0;
 

@@ -42,6 +42,10 @@ bool loadElf(char *fileName, ElfInfo *elfInfo)
     Elf64_Phdr *phdrs;
     Elf64_Shdr *shdrs;
     uint8_t *shst;
+    uint8_t *symst;
+    uint8_t *dynsymst;
+    Elf64_Sym *symt;
+    Elf64_Sym *dynsymt;
 
     fp = fopen(fileName, "r");
 
@@ -77,6 +81,107 @@ bool loadElf(char *fileName, ElfInfo *elfInfo)
     fread(shst, shst_size, 1, fp);
     elfInfo->shst = shst;
 
+    // read symbol table
+    bool foundSymt = false;
+    for (int i = 0; i < ehdr->e_shnum; i++)
+    {
+        char *hdrname = (char *)(shst + shdrs[i].sh_name);
+        if (strcmp(hdrname, ".symtab") == 0)
+        {
+            uint64_t symt_size = shdrs[i].sh_size;
+            uint64_t symt_offset = shdrs[i].sh_offset;
+            symt = malloc(symt_size);
+            fseek(fp, symt_offset, SEEK_SET);
+            fread(symt, symt_size, 1, fp);
+            elfInfo->symt = symt;
+            elfInfo->symtlen = symt_size / sizeof(Elf64_Sym);
+
+            foundSymt = true;
+            break;
+        }
+    }
+
+    if (!foundSymt)
+    {
+        fprintf(stderr, "Symbol table was not found\n");
+        return false;
+    }
+
+    // read symbol string table
+    bool foundSymst = false;
+    for (int i = 0; i < ehdr->e_shnum; i++)
+    {
+        char *hdrname = (char *)(shst + shdrs[i].sh_name);
+        if (strcmp(hdrname, ".strtab") == 0)
+        {
+            uint64_t symst_size = shdrs[i].sh_size;
+            uint64_t symst_offset = shdrs[i].sh_offset;
+            symst = malloc(symst_size);
+            fseek(fp, symst_offset, SEEK_SET);
+            fread(symst, symst_size, 1, fp);
+            elfInfo->symst = symst;
+
+            foundSymst = true;
+            break;
+        }
+    }
+
+    if (!foundSymst)
+    {
+        fprintf(stderr, "Symbol string table was not found\n");
+        return false;
+    }
+
+    // read dynamic symbol table
+    elfInfo->hasDynsymt = false;
+    for (int i = 0; i < ehdr->e_shnum; i++)
+    {
+        char *hdrname = (char *)(shst + shdrs[i].sh_name);
+        if (strcmp(hdrname, ".dynsym") == 0)
+        {
+            uint64_t dynsymt_size = shdrs[i].sh_size;
+            uint64_t dynsymt_offset = shdrs[i].sh_offset;
+            dynsymt = malloc(dynsymt_size);
+            fseek(fp, dynsymt_offset, SEEK_SET);
+            fread(dynsymt, dynsymt_size, 1, fp);
+            elfInfo->dynsymt = dynsymt;
+            elfInfo->hasDynsymt = true;
+            elfInfo->dynsymtlen = dynsymt_size / sizeof(Elf64_Sym);
+            break;
+        }
+    }
+
+    if (!elfInfo->hasDynsymt)
+        printf("Dynamic symbol table was not found");
+
+    else
+    {
+        // read dynamic symbol string table
+        bool foundDynsymst = false;
+        for (int i = 0; i < ehdr->e_shnum; i++)
+        {
+            char *hdrname = (char *)(shst + shdrs[i].sh_name);
+            if (strcmp(hdrname, ".dynstr") == 0)
+            {
+                uint64_t dynsymst_size = shdrs[i].sh_size;
+                uint64_t dynsymst_offset = shdrs[i].sh_offset;
+                dynsymst = malloc(dynsymst_size);
+                fseek(fp, dynsymst_offset, SEEK_SET);
+                fread(dynsymst, dynsymst_size, 1, fp);
+                elfInfo->dynsymst = dynsymst;
+
+                foundDynsymst = true;
+                break;
+            }
+        }
+
+        if (!foundSymst)
+        {
+            fprintf(stderr, "Dynamic symbol string table was not found\n");
+            return false;
+        }
+    }
+
     fclose(fp);
 
     return true;
@@ -88,6 +193,10 @@ void printHeaders(ElfInfo *elfInfo)
     Elf64_Phdr *phdrs = elfInfo->phdrs;
     Elf64_Shdr *shdrs = elfInfo->shdrs;
     uint8_t *shst = elfInfo->shst;
+    uint8_t *symst = elfInfo->symst;
+    uint8_t *dynsymst = elfInfo->dynsymst;
+    Elf64_Sym *symt = elfInfo->symt;
+    Elf64_Sym *dynsymt = elfInfo->dynsymt;
 
     printf("ELF header: \n");
     printf("  Magic:\t\t\t\t");
@@ -123,9 +232,30 @@ void printHeaders(ElfInfo *elfInfo)
     for (int i = 0; i < ehdr->e_shnum; i++)
     {
         printf("  %-20s 0x%-8x 0x%-8x 0x%-8x 0x%-8x %-8d  %-8d %-8d 0x%-8x %-8d\n",
-               ((char *)(shst + shdrs[i].sh_name)), shdrs[i].sh_type, shdrs[i].sh_flags,
+               (char *)(shst + shdrs[i].sh_name), shdrs[i].sh_type, shdrs[i].sh_flags,
                shdrs[i].sh_addr, shdrs[i].sh_offset, shdrs[i].sh_size,
                shdrs[i].sh_link, shdrs[i].sh_info, shdrs[i].sh_addralign, shdrs[i].sh_entsize);
+    }
+
+    printf("\nSymbol table entries: \n");
+    printf("  Name                           Info       Other      Sh index Value      Size\n");
+    for (int i = 0; i < elfInfo->symtlen; i++)
+    {
+        printf("  %-30s 0x%-8x 0x%-8x %-8d 0x%-8x %-8d\n",
+               (char *)(symst + symt[i].st_name), symt[i].st_info, symt[i].st_other, symt[i].st_shndx,
+               symt[i].st_value, symt[i].st_size);
+    }
+
+    if (!elfInfo->hasDynsymt)
+        return;
+
+    printf("\nDynamic symbol table entries: \n");
+    printf("  Name                           Info       Other      Sh index Value      Size\n");
+    for (int i = 0; i < elfInfo->dynsymtlen; i++)
+    {
+        printf("  %-30s 0x%-8x 0x%-8x %-8d 0x%-8x %-8d\n",
+               (char *)(dynsymst + symt[i].st_name), symt[i].st_info, symt[i].st_other, symt[i].st_shndx,
+               symt[i].st_value, symt[i].st_size);
     }
 }
 

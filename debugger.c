@@ -295,13 +295,13 @@ Elf64_Addr lookupSymbolAddrByName(char *name, ElfInfo *elfInfo)
         }
     }
 
-    if (addr > 0)
+    if (addr < ULONG_MAX)
         return addr;
 
     // lookup from dynamic symbol table
     for (int i = 0; i < elfInfo->dynsymtlen; i++)
     {
-        char *symname = (char *)(symst + symt[i].st_name);
+        char *symname = (char *)(dynsymst + symt[i].st_name);
         if (strcmp(name, symname) == 0)
         {
             addr = dynsymt[i].st_value;

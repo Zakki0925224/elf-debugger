@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 #include "debugger.h"
 
 bool isValidElfFile(ElfInfo *elfInfo)
@@ -269,6 +270,48 @@ void lntrim(char *str)
     }
 }
 
+Elf64_Addr lookupSymbolAddrByName(char *name, ElfInfo *elfInfo)
+{
+    uint8_t *symst = elfInfo->symst;
+    uint8_t *dynsymst = elfInfo->dynsymst;
+    Elf64_Sym *symt = elfInfo->symt;
+    Elf64_Sym *dynsymt = elfInfo->dynsymt;
+    uint16_t nameLen = 0;
+    Elf64_Addr addr = ULONG_MAX;
+
+    for (int i = 0; name[i] != '\0'; i++)
+    {
+        nameLen++;
+    }
+
+    // lookup from symbol table
+    for (int i = 0; i < elfInfo->symtlen; i++)
+    {
+        char *symname = (char *)(symst + symt[i].st_name);
+        if (strcmp(name, symname) == 0)
+        {
+            addr = symt[i].st_value;
+            break;
+        }
+    }
+
+    if (addr > 0)
+        return addr;
+
+    // lookup from dynamic symbol table
+    for (int i = 0; i < elfInfo->dynsymtlen; i++)
+    {
+        char *symname = (char *)(symst + symt[i].st_name);
+        if (strcmp(name, symname) == 0)
+        {
+            addr = dynsymt[i].st_value;
+            break;
+        }
+    }
+
+    return addr;
+}
+
 bool shellMain(ElfInfo *elfInfo)
 {
     char strBuf[256];
@@ -278,21 +321,51 @@ bool shellMain(ElfInfo *elfInfo)
         printf("\n(edb) ");
         fgets(strBuf, sizeof(strBuf), stdin);
         lntrim(strBuf);
+        char *token = strtok(strBuf, " ");
 
         // quit
-        if (strcmp(strBuf, "q") == 0)
+        if (strcmp(token, "q") == 0)
         {
             break;
         }
 
-        else if (strcmp(strBuf, "info") == 0)
+        else if (strcmp(token, "info") == 0)
             printHeaders(elfInfo);
 
-        else if (strcmp(strBuf, "") == 0)
+        else if (strcmp(token, "lookup") == 0)
+        {
+            while (token != NULL)
+            {
+                if (strcmp(token, "lookup") != 0)
+                {
+                    Elf64_Addr addr = lookupSymbolAddrByName(token, elfInfo);
+                    if (addr == ULONG_MAX)
+                        printf("Symbol name \"%s\" was not found\n", token);
+                    else
+                        printf("\"%s\": 0x%x\n", token, addr);
+                }
+
+                token = strtok(NULL, " ");
+            }
+
+            // while (args != NULL)
+            // {
+            //     printf("\"%s\"", args);
+            //     if (strcmp(args, "lookup") != 0)
+            //     {
+            //         Elf64_Addr addr = lookupSymbolAddrByName(args, elfInfo);
+            //         printf("0x%x\n", addr);
+            //     }
+
+            //     args = strtok(NULL, " ");
+            // }
+        }
+
+        else if (strcmp(token, "") == 0)
             continue;
 
         else
-            printf("Command \"%s\" was not found\n", strBuf);
+            printf("Command \"%s\" was not found\n", token);
     }
 
     return true;

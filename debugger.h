@@ -22,4 +22,5 @@ typedef struct
 bool isValidElfFile(ElfInfo *elfInfo);
 bool loadElf(char *filePath, ElfInfo *elfInfo);
 void printHeaders(ElfInfo *elfInfo);
+Elf64_Addr lookupSymbolAddrByName(char *name, ElfInfo *elfInfo);
 bool shellMain(ElfInfo *elfInfo);

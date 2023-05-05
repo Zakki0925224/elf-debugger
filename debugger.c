@@ -185,6 +185,10 @@ bool loadElf(char *fileName, ElfInfo *elfInfo)
 
     fclose(fp);
 
+    // allocate breakpoints
+    elfInfo->bps = malloc(sizeof(Elf64_Addr));
+    elfInfo->bpslen = 0;
+
     return true;
 }
 
@@ -255,8 +259,8 @@ void printHeaders(ElfInfo *elfInfo)
     for (int i = 0; i < elfInfo->dynsymtlen; i++)
     {
         printf("  %-30s 0x%-8x 0x%-8x %-8d 0x%-8x %-8d\n",
-               (char *)(dynsymst + symt[i].st_name), symt[i].st_info, symt[i].st_other, symt[i].st_shndx,
-               symt[i].st_value, symt[i].st_size);
+               (char *)(dynsymst + dynsymt[i].st_name), dynsymt[i].st_info, dynsymt[i].st_other, dynsymt[i].st_shndx,
+               dynsymt[i].st_value, dynsymt[i].st_size);
     }
 }
 
@@ -312,6 +316,39 @@ Elf64_Addr lookupSymbolAddrByName(char *name, ElfInfo *elfInfo)
     return addr;
 }
 
+void setBreakpoint(Elf64_Addr addr, ElfInfo *elfInfo)
+{
+    Breakpoint *bps = elfInfo->bps;
+    uint64_t bpslen = elfInfo->bpslen;
+
+    for (int i = 0; i < bpslen; i++)
+    {
+        if (bps[i].addr == addr)
+        {
+            printf("Breakpoint (0x%x) is already set at #%d\n", addr, i);
+            return;
+        }
+    }
+
+    bps[bpslen].addr = addr;
+    bps = realloc(bps, sizeof(Elf64_Addr) * (bpslen + 2));
+    elfInfo->bps = bps;
+    elfInfo->bpslen = bpslen + 1;
+
+    printf("Set breakpoint (#%d) at 0x%x\n", bpslen, addr);
+}
+
+void printBreakpoints(ElfInfo *elfInfo)
+{
+    Breakpoint *bps = elfInfo->bps;
+    uint64_t bpslen = elfInfo->bpslen;
+
+    for (int i = 0; i < bpslen; i++)
+    {
+        printf("#%d - 0x%x\n", i, bps[i].addr);
+    }
+}
+
 bool shellMain(ElfInfo *elfInfo)
 {
     char strBuf[256];
@@ -324,12 +361,12 @@ bool shellMain(ElfInfo *elfInfo)
         char *token = strtok(strBuf, " ");
 
         // quit
-        if (strcmp(token, "q") == 0)
+        if (strcmp(token, "quit") == 0 || strcmp(token, "q") == 0)
         {
             break;
         }
 
-        else if (strcmp(token, "info") == 0)
+        else if (strcmp(token, "info") == 0 || strcmp(token, "i") == 0)
             printHeaders(elfInfo);
 
         else if (strcmp(token, "lookup") == 0)
@@ -347,18 +384,41 @@ bool shellMain(ElfInfo *elfInfo)
 
                 token = strtok(NULL, " ");
             }
+        }
 
-            // while (args != NULL)
-            // {
-            //     printf("\"%s\"", args);
-            //     if (strcmp(args, "lookup") != 0)
-            //     {
-            //         Elf64_Addr addr = lookupSymbolAddrByName(args, elfInfo);
-            //         printf("0x%x\n", addr);
-            //     }
+        else if (strcmp(token, "bp") == 0)
+        {
+            bool isPrintBps = true;
 
-            //     args = strtok(NULL, " ");
-            // }
+            while (token != NULL)
+            {
+                if (strcmp(token, "bp") != 0)
+                {
+                    Elf64_Addr addr = lookupSymbolAddrByName(token, elfInfo);
+                    if (addr == ULONG_MAX)
+                        printf("Symbol name \"%s\" was not found\n", token);
+                    else
+                        setBreakpoint(addr, elfInfo);
+
+                    isPrintBps = false;
+                }
+
+                token = strtok(NULL, " ");
+            }
+
+            if (isPrintBps)
+            {
+                printBreakpoints(elfInfo);
+            }
+        }
+
+        else if (strcmp(token, "help") == 0 || strcmp(token, "h") == 0)
+        {
+            printf("help, h - Show EDB commands.\n");
+            printf("quit, q - Quit EDB.\n");
+            printf("info, i - Show loaded ELF binary info, program headers, section headers and symbol table entries.\n");
+            printf("lookup - Lookup symbol address by name. Ex: \"lookup _init _start\"\n");
+            printf("bp - Set breakpoint by symbol name. If none of args passed, show all breakpoints. Ex: \"bp _init _start\"\n");
         }
 
         else if (strcmp(token, "") == 0)

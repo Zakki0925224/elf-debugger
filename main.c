@@ -57,6 +57,10 @@ int main(int argc, char *argv[])
     free(elfInfo->phdrs);
     free(elfInfo->shdrs);
     free(elfInfo->shst);
+    free(elfInfo->dynsymt);
+    free(elfInfo->symst);
+    free(elfInfo->dynsymst);
+    free(elfInfo->bps);
 
     return 0;
 

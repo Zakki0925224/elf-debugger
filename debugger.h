@@ -1,5 +1,6 @@
 #include <elf.h>
 #include <sys/user.h>
+#include <sys/types.h>
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -7,6 +8,13 @@ typedef struct
 {
     Elf64_Addr addr;
 } Breakpoint;
+
+typedef struct
+{
+    char *fileName;
+    pid_t pid;
+    struct user_regs_struct regs;
+} DebugInfo;
 
 typedef struct
 {
@@ -24,7 +32,8 @@ typedef struct
 
     Breakpoint *bps; // breakpoints
     uint64_t bpslen;
-    struct user_regs_struct regs;
+
+    DebugInfo dbgInfo;
 } ElfInfo;
 
 bool isValidElfFile(ElfInfo *elfInfo);
@@ -33,4 +42,5 @@ void printHeaders(ElfInfo *elfInfo);
 Elf64_Addr lookupSymbolAddrByName(char *name, ElfInfo *elfInfo);
 void setBreakpoint(Elf64_Addr addr, ElfInfo *elfInfo);
 void printBreakpoints(ElfInfo *elfInfo);
+void execute(ElfInfo *elfInfo, char *args[]);
 bool shellMain(ElfInfo *elfInfo);

@@ -2,6 +2,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
+#include <unistd.h>
+#include <sys/ptrace.h>
+#include <sys/reg.h>
+#include <sys/user.h>
+#include <sys/wait.h>
 #include "debugger.h"
 
 bool isValidElfFile(ElfInfo *elfInfo)
@@ -47,6 +52,9 @@ bool loadElf(char *fileName, ElfInfo *elfInfo)
     uint8_t *dynsymst;
     Elf64_Sym *symt;
     Elf64_Sym *dynsymt;
+
+    elfInfo->dbgInfo.fileName = fileName;
+    elfInfo->dbgInfo.pid = 0;
 
     fp = fopen(fileName, "r");
 
@@ -264,16 +272,6 @@ void printHeaders(ElfInfo *elfInfo)
     }
 }
 
-void lntrim(char *str)
-{
-    char *p;
-    p = strchr(str, '\n');
-    if (p != NULL)
-    {
-        *p = '\0';
-    }
-}
-
 Elf64_Addr lookupSymbolAddrByName(char *name, ElfInfo *elfInfo)
 {
     uint8_t *symst = elfInfo->symst;
@@ -349,31 +347,65 @@ void printBreakpoints(ElfInfo *elfInfo)
     }
 }
 
+void execute(ElfInfo *elfInfo, char *args[])
+{
+    pid_t pid = fork();
+    if (pid > 0) // parent
+    {
+        printf("Running at pid: %d\n", pid);
+        elfInfo->dbgInfo.pid = pid;
+
+        int status;
+        pid_t child_pid = wait(&status);
+        WIFEXITED(status);
+        printf("Child process (pid: %d) exited with status %d\n", child_pid, status);
+    }
+    else if (pid == 0) // child
+    {
+        ptrace(PTRACE_TRACEME, 0, NULL, NULL);
+        execve(elfInfo->dbgInfo.fileName, args, NULL);
+        exit(EXIT_SUCCESS);
+    }
+    else
+        printf("Failed to fork process\n");
+}
+
+void lntrim(char *str)
+{
+    char *p;
+    p = strchr(str, '\n');
+    if (p != NULL)
+    {
+        *p = '\0';
+    }
+}
+
 bool shellMain(ElfInfo *elfInfo)
 {
-    char strBuf[256];
+    int bufLen = 256;
+    char tmp[bufLen];
+    char strBuf[bufLen];
 
     while (1)
     {
         printf("\n(edb) ");
-        fgets(strBuf, sizeof(strBuf), stdin);
+        fgets(strBuf, sizeof(char) * bufLen, stdin);
         lntrim(strBuf);
+        memcpy(tmp, strBuf, sizeof(char) * bufLen);
         char *token = strtok(strBuf, " ");
 
         // quit
         if (strcmp(token, "quit") == 0 || strcmp(token, "q") == 0)
-        {
             break;
-        }
 
         else if (strcmp(token, "info") == 0 || strcmp(token, "i") == 0)
             printHeaders(elfInfo);
 
-        else if (strcmp(token, "lookup") == 0)
+        else if (strcmp(token, "lookup") == 0 || strcmp(token, "l") == 0)
         {
-            while (token != NULL)
+            for (int i = 0; token != NULL; i++)
             {
-                if (strcmp(token, "lookup") != 0)
+                if (i != 0)
                 {
                     Elf64_Addr addr = lookupSymbolAddrByName(token, elfInfo);
                     if (addr == ULONG_MAX)
@@ -386,13 +418,13 @@ bool shellMain(ElfInfo *elfInfo)
             }
         }
 
-        else if (strcmp(token, "bp") == 0)
+        else if (strcmp(token, "breakpoint") == 0 || strcmp(token, "b") == 0)
         {
             bool isPrintBps = true;
 
-            while (token != NULL)
+            for (int i = 0; token != NULL; i++)
             {
-                if (strcmp(token, "bp") != 0)
+                if (i != 0)
                 {
                     Elf64_Addr addr = lookupSymbolAddrByName(token, elfInfo);
                     if (addr == ULONG_MAX)
@@ -407,9 +439,41 @@ bool shellMain(ElfInfo *elfInfo)
             }
 
             if (isPrintBps)
-            {
                 printBreakpoints(elfInfo);
+        }
+
+        else if (strcmp(token, "run") == 0 || strcmp(token, "r") == 0)
+        {
+            int argsLen = 0;
+            bool isPrevSpace = false;
+            for (int i = 0; tmp[i] != '\0'; i++)
+            {
+                if (tmp[i] == ' ')
+                {
+                    isPrevSpace = true;
+                    continue;
+                }
+
+                if (isPrevSpace)
+                    argsLen++;
+
+                isPrevSpace = false;
             }
+
+            char *args[argsLen];
+            char *argToken = strtok(tmp, " ");
+
+            for (int i = 0; argToken != NULL; i++)
+            {
+                if (i != 0)
+                {
+                    args[i - 1] = argToken;
+                }
+
+                argToken = strtok(NULL, " ");
+            }
+
+            execute(elfInfo, args);
         }
 
         else if (strcmp(token, "help") == 0 || strcmp(token, "h") == 0)
@@ -417,8 +481,9 @@ bool shellMain(ElfInfo *elfInfo)
             printf("help, h - Show EDB commands.\n");
             printf("quit, q - Quit EDB.\n");
             printf("info, i - Show loaded ELF binary info, program headers, section headers and symbol table entries.\n");
-            printf("lookup - Lookup symbol address by name. Ex: \"lookup _init _start\"\n");
-            printf("bp - Set breakpoint by symbol name. If none of args passed, show all breakpoints. Ex: \"bp _init _start\"\n");
+            printf("lookup, l - Lookup symbol address by name. Ex: \"lookup _init _start\"\n");
+            printf("breakpoint, b - Set breakpoint by symbol name. If none of args passed, show all breakpoints. Ex: \"bp _init _start\"\n");
+            printf("run, r - Run ELF binary. You can append args for target process. Ex: \"run 0 1 2\"\n");
         }
 
         else if (strcmp(token, "") == 0)

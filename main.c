@@ -1,11 +1,5 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <sys/ptrace.h>
-#include <sys/reg.h>
-#include <sys/types.h>
-#include <sys/user.h>
-#include <sys/wait.h>
 #include "debugger.h"
 
 // void printRegisters(int pid)

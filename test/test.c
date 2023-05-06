@@ -1,7 +1,14 @@
 #include <stdio.h>
 
-int main(void)
+void print_string(char *s)
 {
-    printf("hello world!");
+    printf("%s\n", s);
+}
+
+int main(int argc, char **argv)
+{
+    print_string("Hello world (0)");
+    print_string("Hello world (1)");
+    print_string("Hello world (2)");
     return 0;
 }

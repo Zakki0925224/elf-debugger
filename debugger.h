@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#define OPCODE_INT3 0xcc
+
 typedef struct
 {
     Elf64_Addr addr;
@@ -30,7 +32,8 @@ typedef struct
     uint8_t *symst;    // symbol string table
     uint8_t *dynsymst; // dynamic symbol string table
 
-    Breakpoint *bps; // breakpoints
+    Breakpoint *bps;  // breakpoints
+    u_int64_t *bpins; // original instructions at breakpoints
     uint64_t bpslen;
 
     DebugInfo dbgInfo;
@@ -42,5 +45,7 @@ void printHeaders(ElfInfo *elfInfo);
 Elf64_Addr lookupSymbolAddrByName(char *name, ElfInfo *elfInfo);
 void setBreakpoint(Elf64_Addr addr, ElfInfo *elfInfo);
 void printBreakpoints(ElfInfo *elfInfo);
+void printRegisters(ElfInfo *elfInfo);
+void trace(ElfInfo *elfInfo);
 void execute(ElfInfo *elfInfo, char *args[]);
 bool shellMain(ElfInfo *elfInfo);

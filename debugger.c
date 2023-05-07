@@ -12,28 +12,30 @@
 
 bool isValidElfFile(ElfInfo *elfInfo)
 {
-    if (!(elfInfo->ehdr->e_ident[0] == ELFMAG0 &&
-          elfInfo->ehdr->e_ident[1] == ELFMAG1 &&
-          elfInfo->ehdr->e_ident[2] == ELFMAG2 &&
-          elfInfo->ehdr->e_ident[3] == ELFMAG3))
+    Elf64_Ehdr *ehdr = elfInfo->ehdr;
+
+    if (!(ehdr->e_ident[0] == ELFMAG0 &&
+          ehdr->e_ident[1] == ELFMAG1 &&
+          ehdr->e_ident[2] == ELFMAG2 &&
+          ehdr->e_ident[3] == ELFMAG3))
     {
         fprintf(stderr, "This file is not ELF binary\n");
         return false;
     }
 
-    if (elfInfo->ehdr->e_type != ET_EXEC)
+    if (ehdr->e_type != ET_EXEC)
     {
         fprintf(stderr, "This file is not executable ELF binary\n");
         return false;
     }
 
-    if (elfInfo->ehdr->e_machine != EM_X86_64)
+    if (ehdr->e_machine != EM_X86_64)
     {
         fprintf(stderr, "This file is not x86_64 ELF binary\n");
         return false;
     }
 
-    if (elfInfo->ehdr->e_shstrndx == 0 || elfInfo->ehdr->e_shoff == 0 || elfInfo->ehdr->e_shnum == 0)
+    if (ehdr->e_shstrndx == 0 || ehdr->e_shoff == 0 || ehdr->e_shnum == 0)
     {
         fprintf(stderr, "No section headers\n");
         return false;
@@ -195,8 +197,8 @@ bool loadElf(char *fileName, ElfInfo *elfInfo)
     fclose(fp);
 
     // allocate breakpoints
-    elfInfo->bps = malloc(sizeof(Elf64_Addr));
-    elfInfo->bpslen = 0;
+    elfInfo->dbgInfo.bps = malloc(sizeof(Breakpoint));
+    elfInfo->dbgInfo.bpslen = 0;
 
     return true;
 }
@@ -317,8 +319,9 @@ Elf64_Addr lookupSymbolAddrByName(char *name, ElfInfo *elfInfo)
 
 void setBreakpoint(Elf64_Addr addr, ElfInfo *elfInfo)
 {
-    Breakpoint *bps = elfInfo->bps;
-    uint64_t bpslen = elfInfo->bpslen;
+    DebugInfo *dbgInfo = &elfInfo->dbgInfo;
+    Breakpoint *bps = dbgInfo->bps;
+    uint64_t bpslen = dbgInfo->bpslen;
 
     for (int i = 0; i < bpslen; i++)
     {
@@ -330,17 +333,18 @@ void setBreakpoint(Elf64_Addr addr, ElfInfo *elfInfo)
     }
 
     bps[bpslen].addr = addr;
-    bps = realloc(bps, sizeof(Elf64_Addr) * (bpslen + 2));
-    elfInfo->bps = bps;
-    elfInfo->bpslen = bpslen + 1;
+    bps = realloc(bps, sizeof(Breakpoint) * (bpslen + 2));
+    dbgInfo->bpslen = bpslen + 1;
+    dbgInfo->bps = bps;
 
     printf("Set breakpoint (#%d) at 0x%x\n", bpslen, addr);
 }
 
 void printBreakpoints(ElfInfo *elfInfo)
 {
-    Breakpoint *bps = elfInfo->bps;
-    uint64_t bpslen = elfInfo->bpslen;
+    DebugInfo *dbgInfo = &elfInfo->dbgInfo;
+    Breakpoint *bps = dbgInfo->bps;
+    uint64_t bpslen = dbgInfo->bpslen;
 
     for (int i = 0; i < bpslen; i++)
     {
@@ -358,7 +362,6 @@ void printRegisters(ElfInfo *elfInfo)
         return;
     }
 
-    ptrace(PTRACE_GETREGS, pid, NULL, &elfInfo->dbgInfo.regs);
     struct user_regs_struct regs = elfInfo->dbgInfo.regs;
 
     printf("Registers: \n");
@@ -382,64 +385,77 @@ void printRegisters(ElfInfo *elfInfo)
 
 void trace(ElfInfo *elfInfo)
 {
-    pid_t pid = elfInfo->dbgInfo.pid;
-    long tr_ret;
-    int p_status;
-
-    waitpid(pid, &p_status, 0);
-
-    // set breakpoints
-    // TODO: Fix
-    elfInfo->bpins = malloc(sizeof(u_int64_t) * elfInfo->bpslen);
-    for (int i = 0; i < elfInfo->bpslen; i++)
-    {
-        Elf64_Addr addr = elfInfo->bps[i].addr;
-        // read instruction at symbol address
-        u_int64_t inst = ptrace(PTRACE_PEEKTEXT, pid, addr, NULL);
-        // backup
-        elfInfo->bpins[i] = inst;
-        // insert INT3
-        inst = (inst & ~0xff) | OPCODE_INT3;
-        // write
-        ptrace(PTRACE_POKETEXT, pid, addr, inst);
-    }
+    DebugInfo *dbgInfo = &elfInfo->dbgInfo;
+    pid_t pid = dbgInfo->pid;
+    uint32_t p_status = dbgInfo->status;
 
     while (1)
     {
-        printRegisters(elfInfo);
-
         if (WIFEXITED(p_status))
         {
-            elfInfo->dbgInfo.pid = 0;
+            dbgInfo->pid = 0;
             break;
         }
 
         if (WIFSTOPPED(p_status))
         {
+            ptrace(PTRACE_GETREGS, pid, NULL, &dbgInfo->regs);
+            printf("rip: 0x%llx\n", dbgInfo->regs.rip);
+
             int stopsig = WSTOPSIG(p_status);
             printf("STOPSIG: %d\n", stopsig);
 
             if (stopsig == SIGTRAP)
             {
-                printf("Breakpoint\n");
+                printf("Enter \"continue\" or \"c\" commands to continue...\n");
                 break;
             }
         }
 
         ptrace(PTRACE_CONT, pid, NULL, NULL);
         waitpid(pid, &p_status, 0);
+        dbgInfo->status = p_status;
     }
 
-    if (elfInfo->dbgInfo.pid == 0)
+    if (dbgInfo->pid == 0)
         printf("Exited\n");
 }
 
 void execute(ElfInfo *elfInfo, char *args[])
 {
-    pid_t pid = fork();
+    DebugInfo *dbgInfo = &elfInfo->dbgInfo;
+    Breakpoint *bps = dbgInfo->bps;
+    pid_t pid = dbgInfo->pid;
+
+    if (pid > 0)
+    {
+        printf("Program is running at pid %d", pid);
+        return;
+    }
+
+    pid = fork();
     if (pid > 0) // parent
     {
-        elfInfo->dbgInfo.pid = pid;
+        dbgInfo->pid = pid;
+        printf("Running at pid %d\n", pid);
+
+        waitpid(pid, &dbgInfo->status, 0);
+
+        // set breakpoints
+        for (int i = 0; i < dbgInfo->bpslen; i++)
+        {
+            Elf64_Addr addr = bps[i].addr;
+            // read instruction at symbol address
+            u_int64_t inst = ptrace(PTRACE_PEEKTEXT, pid, addr, NULL);
+            // backup
+            bps[i].orig_ins = inst;
+            // insert INT3
+            inst = (inst & ~0xff) | OPCODE_INT3;
+            // write
+            ptrace(PTRACE_POKETEXT, pid, addr, inst);
+        }
+        dbgInfo->bps = bps;
+
         trace(elfInfo);
     }
     else if (pid == 0) // child
@@ -450,6 +466,61 @@ void execute(ElfInfo *elfInfo, char *args[])
     }
     else
         printf("Failed to fork process\n");
+}
+
+void cont(ElfInfo *elfInfo)
+{
+    DebugInfo *dbgInfo = &elfInfo->dbgInfo;
+    Breakpoint *bps = dbgInfo->bps;
+    pid_t pid = dbgInfo->pid;
+
+    if (dbgInfo->pid == 0)
+    {
+        printf("Program is not running\n");
+        return;
+    }
+
+    if (WSTOPSIG(dbgInfo->status) != SIGTRAP)
+    {
+        printf("Program is not trapped\n");
+        return;
+    }
+
+    // restore original instructions at breakpoint
+    Elf64_Addr rip = dbgInfo->regs.rip - 1;
+    int bpIdx = -1;
+    for (int i = 0; i < dbgInfo->bpslen; i++)
+    {
+        Elf64_Addr addr = bps[i].addr;
+
+        if (addr == rip)
+        {
+            // write
+            ptrace(PTRACE_POKETEXT, pid, addr, bps[i].orig_ins);
+            bpIdx = i;
+            break;
+        }
+    }
+
+    if (bpIdx != -1)
+    {
+        // set registers
+        dbgInfo->regs.rip = rip;
+        ptrace(PTRACE_SETREGS, pid, NULL, &dbgInfo->regs);
+
+        ptrace(PTRACE_SINGLESTEP, pid, NULL, NULL);
+        wait(NULL);
+
+        // restore breakpoint instruction
+        Elf64_Addr addr = bps[bpIdx].addr;
+        u_int64_t inst = (bps[bpIdx].orig_ins & ~0xff) | OPCODE_INT3;
+        ptrace(PTRACE_POKETEXT, pid, addr, inst);
+    }
+
+    ptrace(PTRACE_CONT, pid, NULL, NULL);
+    waitpid(pid, &dbgInfo->status, 0);
+
+    trace(elfInfo);
 }
 
 void lntrim(char *str)
@@ -511,7 +582,7 @@ bool shellMain(ElfInfo *elfInfo)
                     if (elfInfo->dbgInfo.pid != 0)
                     {
                         printf("Can not add breakpoints because program is running\n");
-                        return;
+                        break;
                     }
 
                     Elf64_Addr addr = lookupSymbolAddrByName(token, elfInfo);
@@ -564,6 +635,9 @@ bool shellMain(ElfInfo *elfInfo)
             execute(elfInfo, args);
         }
 
+        else if (strcmp(token, "continue") == 0 || strcmp(token, "c") == 0)
+            cont(elfInfo);
+
         else if (strcmp(token, "regs") == 0)
             printRegisters(elfInfo);
 
@@ -575,6 +649,7 @@ bool shellMain(ElfInfo *elfInfo)
             printf("lookup, l - Lookup symbol address by name. Ex: \"lookup _init _start\"\n");
             printf("breakpoint, b - Set breakpoint by symbol name. If none of args passed, show all breakpoints. Ex: \"bp _init _start\"\n");
             printf("run, r - Run ELF binary. You can append args for target program. Ex: \"run 0 1 2\"\n");
+            printf("continue, c - Continue trace when program trapped.");
             printf("regs - Show registers of running program");
         }
 

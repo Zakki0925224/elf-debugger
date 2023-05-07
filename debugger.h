@@ -9,13 +9,17 @@
 typedef struct
 {
     Elf64_Addr addr;
+    uint64_t orig_ins; // original instructions at breakpoint
 } Breakpoint;
 
 typedef struct
 {
     char *fileName;
     pid_t pid;
+    uint32_t status;
     struct user_regs_struct regs;
+    Breakpoint *bps; // breakpoints
+    uint64_t bpslen;
 } DebugInfo;
 
 typedef struct
@@ -32,10 +36,6 @@ typedef struct
     uint8_t *symst;    // symbol string table
     uint8_t *dynsymst; // dynamic symbol string table
 
-    Breakpoint *bps;  // breakpoints
-    u_int64_t *bpins; // original instructions at breakpoints
-    uint64_t bpslen;
-
     DebugInfo dbgInfo;
 } ElfInfo;
 
@@ -48,4 +48,5 @@ void printBreakpoints(ElfInfo *elfInfo);
 void printRegisters(ElfInfo *elfInfo);
 void trace(ElfInfo *elfInfo);
 void execute(ElfInfo *elfInfo, char *args[]);
+void cont(ElfInfo *elfInfo);
 bool shellMain(ElfInfo *elfInfo);

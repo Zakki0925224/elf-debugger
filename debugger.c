@@ -483,8 +483,7 @@ void execute(char *args[], ElfInfo *elfInfo)
     else if (pid == 0) // child
     {
         ptrace(PTRACE_TRACEME, 0, NULL, NULL);
-        // TODO: Replace args
-        execl(elfInfo->dbgInfo.fileName, args, NULL);
+        execv(elfInfo->dbgInfo.fileName, args);
     }
     else
         printf("Failed to fork process\n");
@@ -625,7 +624,8 @@ bool shellMain(ElfInfo *elfInfo)
 
         else if (strcmp(token, "run") == 0 || strcmp(token, "r") == 0)
         {
-            int argsLen = 0;
+            // generate args from input
+            int argsLen = 2;
             bool isPrevSpace = false;
             for (int i = 0; tmp[i] != '\0'; i++)
             {
@@ -644,15 +644,19 @@ bool shellMain(ElfInfo *elfInfo)
             char *args[argsLen];
             char *argToken = strtok(tmp, " ");
 
-            for (int i = 0; argToken != NULL; i++)
+            args[0] = elfInfo->dbgInfo.fileName;
+
+            for (int i = 1; argToken != NULL; i++)
             {
-                if (i != 0)
+                if (i != 1)
                 {
                     args[i - 1] = argToken;
                 }
 
                 argToken = strtok(NULL, " ");
             }
+
+            args[argsLen - 1] = NULL;
 
             execute(args, elfInfo);
         }
@@ -668,9 +672,9 @@ bool shellMain(ElfInfo *elfInfo)
             printf("help, h - Show EDB commands.\n");
             printf("quit, q - Quit EDB.\n");
             printf("info, i - Show loaded ELF binary info, program headers, section headers and symbol table entries.\n");
-            printf("lookup, l - Lookup symbol address by name. Ex: \"lookup _init _start\"\n");
-            printf("breakpoint, b - Set breakpoint by symbol name. If none of args passed, show all breakpoints. Ex: \"bp _init _start\"\n");
-            printf("run, r - Run ELF binary. You can append args for target program. Ex: \"run 0 1 2\"\n");
+            printf("lookup, l - Lookup symbol address by name. Ex: \"l _init _start\"\n");
+            printf("breakpoint, b - Set breakpoint by symbol name. If none of args passed, show all breakpoints. Ex: \"b _init _start\"\n");
+            printf("run, r - Run ELF binary. You can append args for target program. Ex: \"r 0 1 2\"\n");
             printf("continue, c - Continue trace when program trapped.");
             printf("regs - Show registers of running program");
         }

@@ -428,10 +428,9 @@ void trace(ElfInfo *elfInfo)
             printf("STOPSIG: %d\n", stopsig);
 
             if (stopsig == SIGTRAP)
-            {
                 printf("Enter \"continue\" or \"c\" commands to continue...\n");
-                break;
-            }
+
+            break;
         }
 
         ptrace(PTRACE_CONT, pid, NULL, NULL);

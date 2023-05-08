@@ -281,13 +281,7 @@ Elf64_Addr lookupSymbolAddrByName(char *name, ElfInfo *elfInfo)
     uint8_t *dynsymst = elfInfo->dynsymst;
     Elf64_Sym *symt = elfInfo->symt;
     Elf64_Sym *dynsymt = elfInfo->dynsymt;
-    uint16_t nameLen = 0;
     Elf64_Addr addr = ULONG_MAX;
-
-    for (int i = 0; name[i] != '\0'; i++)
-    {
-        nameLen++;
-    }
 
     // lookup from symbol table
     for (int i = 0; i < elfInfo->symtlen; i++)
@@ -306,7 +300,7 @@ Elf64_Addr lookupSymbolAddrByName(char *name, ElfInfo *elfInfo)
     // lookup from dynamic symbol table
     for (int i = 0; i < elfInfo->dynsymtlen; i++)
     {
-        char *symname = (char *)(dynsymst + symt[i].st_name);
+        char *symname = (char *)(dynsymst + dynsymt[i].st_name);
         if (strcmp(name, symname) == 0)
         {
             addr = dynsymt[i].st_value;
@@ -315,6 +309,34 @@ Elf64_Addr lookupSymbolAddrByName(char *name, ElfInfo *elfInfo)
     }
 
     return addr;
+}
+
+char *lookupSymbolNameByAddr(Elf64_Addr addr, ElfInfo *elfInfo)
+{
+    uint8_t *symst = elfInfo->symst;
+    uint8_t *dynsymst = elfInfo->dynsymst;
+    Elf64_Sym *symt = elfInfo->symt;
+    Elf64_Sym *dynsymt = elfInfo->dynsymt;
+
+    // lookup from symbol table
+    for (int i = 0; i < elfInfo->symtlen; i++)
+    {
+        if (symt[i].st_value == addr)
+        {
+            return (char *)(symst + symt[i].st_name);
+        }
+    }
+
+    // lookup from dynamic symbol table
+    for (int i = 0; i < elfInfo->dynsymtlen; i++)
+    {
+        if (dynsymt[i].st_value == addr)
+        {
+            return (char *)(dynsymst + dynsymt[i].st_name);
+        }
+    }
+
+    return "<NO SYMBOL NAME>";
 }
 
 void setBreakpoint(Elf64_Addr addr, ElfInfo *elfInfo)
@@ -400,7 +422,7 @@ void trace(ElfInfo *elfInfo)
         if (WIFSTOPPED(p_status))
         {
             ptrace(PTRACE_GETREGS, pid, NULL, &dbgInfo->regs);
-            printf("rip: 0x%llx\n", dbgInfo->regs.rip);
+            printf("\"%s\" at 0x%llx\n", lookupSymbolNameByAddr(dbgInfo->regs.rip - 1, elfInfo), dbgInfo->regs.rip);
 
             int stopsig = WSTOPSIG(p_status);
             printf("STOPSIG: %d\n", stopsig);
@@ -421,7 +443,7 @@ void trace(ElfInfo *elfInfo)
         printf("Exited\n");
 }
 
-void execute(ElfInfo *elfInfo, char *args[])
+void execute(char *args[], ElfInfo *elfInfo)
 {
     DebugInfo *dbgInfo = &elfInfo->dbgInfo;
     Breakpoint *bps = dbgInfo->bps;
@@ -632,7 +654,7 @@ bool shellMain(ElfInfo *elfInfo)
                 argToken = strtok(NULL, " ");
             }
 
-            execute(elfInfo, args);
+            execute(args, elfInfo);
         }
 
         else if (strcmp(token, "continue") == 0 || strcmp(token, "c") == 0)

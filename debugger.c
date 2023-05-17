@@ -203,6 +203,27 @@ bool loadElf(char *fileName, ElfInfo *elfInfo)
     return true;
 }
 
+static size_t dummy_callback(void *contents, size_t size, size_t nmemb, void *userp)
+{
+    (void)contents;
+    (void)userp;
+    return size * nmemb;
+}
+
+// TODO
+void postToVisualizer(ElfInfo *elfInfo)
+{
+    char str[2048];
+    sprintf(str, "rbp=%lld&rbx=%lld&rax=%lld&rcx=%lld&rdx=%lld");
+
+    curl_easy_setopt(elfInfo->curl, CURLOPT_URL, VISUALIZER_API_URI);
+    curl_easy_setopt(elfInfo->curl, CURLOPT_POSTFIELDS, str);
+    curl_easy_setopt(elfInfo->curl, CURLOPT_WRITEFUNCTION, dummy_callback);
+
+    // if (curl_easy_perform(elfInfo->curl) != CURLE_OK)
+    //     printf("Failed to post to visualizer\n");
+}
+
 void printHeaders(ElfInfo *elfInfo)
 {
     Elf64_Ehdr *ehdr = elfInfo->ehdr;
@@ -683,6 +704,8 @@ bool shellMain(ElfInfo *elfInfo)
 
         else
             printf("Command \"%s\" was not found\n", token);
+
+        postToVisualizer(elfInfo);
     }
 
     return true;

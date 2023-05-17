@@ -18,6 +18,9 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
+    // init curl
+    elfInfo->curl = curl_easy_init();
+
     if (!shellMain(elfInfo))
     {
         exit(1);
@@ -31,6 +34,9 @@ int main(int argc, char *argv[])
     free(elfInfo->symst);
     free(elfInfo->dynsymst);
     free(elfInfo->dbgInfo.bps);
+
+    curl_easy_cleanup(elfInfo->curl);
+    curl_global_cleanup();
 
     return 0;
 }

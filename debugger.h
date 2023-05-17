@@ -3,8 +3,10 @@
 #include <sys/types.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <curl/curl.h>
 
 #define OPCODE_INT3 0xcc
+#define VISUALIZER_API_URI "http://localhost:3000/api"
 
 typedef struct
 {
@@ -37,10 +39,12 @@ typedef struct
     uint8_t *dynsymst; // dynamic symbol string table
 
     DebugInfo dbgInfo;
+    CURL *curl;
 } ElfInfo;
 
 bool isValidElfFile(ElfInfo *elfInfo);
 bool loadElf(char *filePath, ElfInfo *elfInfo);
+void postToVisualizer(ElfInfo *elfInfo);
 void printHeaders(ElfInfo *elfInfo);
 Elf64_Addr lookupSymbolAddrByName(char *name, ElfInfo *elfInfo);
 char *lookupSymbolNameByAddr(Elf64_Addr addr, ElfInfo *elfInfo);

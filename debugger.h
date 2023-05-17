@@ -6,7 +6,7 @@
 #include <curl/curl.h>
 
 #define OPCODE_INT3 0xcc
-#define VISUALIZER_API_URI "http://localhost:3000/api"
+#define VISUALIZER_API_URI "http://localhost:8080/api"
 
 typedef struct
 {

@@ -1,9 +1,9 @@
 SRCS=$(wildcard *.c)
 OBJS=$(SRCS:.c=.o)
-LDLIBS=-lcurl
+#LDLIBS=-lcurl
 
 edb: $(OBJS)
-	$(CC) -no-pie -g -o edb $(OBJS) $(LDLIBS)
+	$(CC) -no-pie -g -o edb $(OBJS) #$(LDLIBS)
 
 clean:
 	rm -f edb *.o *~ tmp*

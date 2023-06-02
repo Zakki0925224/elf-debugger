@@ -212,16 +212,6 @@ static size_t dummy_callback(void *contents, size_t size, size_t nmemb, void *us
 
 void postToVisualizer(ElfInfo *elfInfo)
 {
-    char str[2048];
-    DebugInfo dbgInfo = elfInfo->dbgInfo;
-    struct user_regs_struct regs = dbgInfo.regs;
-    sprintf(str, "rbp=%lld&rbx=%lld&rax=%lld&rcx=%lld&rdx=%lld", regs.rbp, regs.rbx, regs.rax, regs.rcx, regs.rdx);
-
-    curl_easy_setopt(elfInfo->curl, CURLOPT_URL, VISUALIZER_API_URI);
-    curl_easy_setopt(elfInfo->curl, CURLOPT_POSTFIELDS, str);
-    curl_easy_setopt(elfInfo->curl, CURLOPT_WRITEFUNCTION, dummy_callback);
-
-    curl_easy_perform(elfInfo->curl);
 }
 
 void printHeaders(ElfInfo *elfInfo)

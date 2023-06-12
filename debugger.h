@@ -41,13 +41,13 @@ typedef struct
 
 bool isValidElfFile(ElfInfo *elfInfo);
 bool loadElf(char *filePath, ElfInfo *elfInfo);
-void postToVisualizer(ElfInfo *elfInfo);
 void printHeaders(ElfInfo *elfInfo);
 Elf64_Addr lookupSymbolAddrByName(char *name, ElfInfo *elfInfo);
 char *lookupSymbolNameByAddr(Elf64_Addr addr, ElfInfo *elfInfo);
 void setBreakpoint(Elf64_Addr addr, ElfInfo *elfInfo);
 void printBreakpoints(ElfInfo *elfInfo);
 void printRegisters(ElfInfo *elfInfo);
+void printStack(ElfInfo *elfInfo);
 void trace(ElfInfo *elfInfo);
 void execute(char *args[], ElfInfo *elfInfo);
 void cont(ElfInfo *elfInfo);

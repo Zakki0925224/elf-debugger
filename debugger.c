@@ -203,17 +203,6 @@ bool loadElf(char *fileName, ElfInfo *elfInfo)
     return true;
 }
 
-static size_t dummy_callback(void *contents, size_t size, size_t nmemb, void *userp)
-{
-    (void)contents;
-    (void)userp;
-    return size * nmemb;
-}
-
-void postToVisualizer(ElfInfo *elfInfo)
-{
-}
-
 void printHeaders(ElfInfo *elfInfo)
 {
     Elf64_Ehdr *ehdr = elfInfo->ehdr;
@@ -414,6 +403,31 @@ void printRegisters(ElfInfo *elfInfo)
     printf("es    : 0x%llx\n", regs.es);
     printf("fs    : 0x%llx\n", regs.fs);
     printf("gs    : 0x%llx\n", regs.gs);
+}
+
+void printStack(ElfInfo *elfInfo)
+{
+    pid_t pid = elfInfo->dbgInfo.pid;
+
+    if (pid == 0)
+    {
+        printf("Program is not running\n");
+        return;
+    }
+
+    struct user_regs_struct regs = elfInfo->dbgInfo.regs;
+
+    uint64_t rsp = regs.rsp;
+    uint64_t rbp = regs.rbp;
+
+    printf("Current stack frame: rsp: 0x%llx - rbp: 0x%llx\n", rsp, rbp);
+
+    // 16 byte align
+    for (uint64_t addr = rsp; addr < rbp; addr += (sizeof(uint64_t) + sizeof(uint64_t)))
+    {
+        uint64_t data = ptrace(PTRACE_PEEKDATA, pid, addr, NULL);
+        printf("0x%llx: 0x%llx\n", addr, data);
+    }
 }
 
 void trace(ElfInfo *elfInfo)
@@ -677,6 +691,9 @@ bool shellMain(ElfInfo *elfInfo)
         else if (strcmp(token, "regs") == 0)
             printRegisters(elfInfo);
 
+        else if (strcmp(token, "stack") == 0)
+            printStack(elfInfo);
+
         else if (strcmp(token, "help") == 0 || strcmp(token, "h") == 0)
         {
             printf("help, h - Show EDB commands.\n");
@@ -687,6 +704,7 @@ bool shellMain(ElfInfo *elfInfo)
             printf("run, r - Run ELF binary. You can append args for target program. Ex: \"r 0 1 2\"\n");
             printf("continue, c - Continue trace when program trapped.");
             printf("regs - Show registers of running program");
+            printf("stack - Show stack of running program");
         }
 
         else if (strcmp(token, "") == 0)
@@ -694,8 +712,6 @@ bool shellMain(ElfInfo *elfInfo)
 
         else
             printf("Command \"%s\" was not found\n", token);
-
-        postToVisualizer(elfInfo);
     }
 
     return true;
